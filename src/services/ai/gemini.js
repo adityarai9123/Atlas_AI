@@ -1,12 +1,20 @@
 const { GoogleGenAI } = require("@google/genai");
 
+const financeTools = require("../../tools/financeTools");
+const userTools = require("../../tools/userTools");
+
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
 });
 
+const allTools = {
+  ...financeTools,
+  ...userTools,
+};
+
 const GEMINI_MODEL = "gemini-3.5-flash";
 
-const financeTools = require("../../tools/financeTools");
+
 
 const toolDefinitions = [
   {
@@ -59,18 +67,59 @@ const toolDefinitions = [
           required: ["symbol"],
         },
       },
+      {
+        name: "addToWatchlist",
+        description: "Add a stock ticker to the user's personal watchlist.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            symbol: {
+              type: "STRING",
+              description:
+                "Stock ticker symbol, such as NVDA, AMD, AAPL or TSM.",
+            },
+          },
+          required: ["symbol"],
+        },
+      },
+      {
+        name: "removeFromWatchlist",
+        description:
+          "Remove a stock ticker from the user's personal watchlist.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            symbol: {
+              type: "STRING",
+              description: "Stock ticker symbol.",
+            },
+          },
+          required: ["symbol"],
+        },
+      },
+      {
+        name: "getWatchlist",
+        description: "Get the user's current personal stock watchlist.",
+        parameters: {
+          type: "OBJECT",
+          properties: {},
+        },
+      },
     ],
   },
 ];
 
-const executeTool = async (name, args) => {
-  const tool = financeTools[name];
+const executeTool = async (name, args, user) => {
+  const tool = allTools[name];
 
   if (!tool) {
-    throw new Error(`Unknown finance tool: ${name}`);
+    throw new Error(`Unknown tool: ${name}`);
   }
 
-  return await tool(args);
+  return await tool({
+    ...args,
+    telegramId: user.telegramId,
+  });
 };
 
 module.exports = {

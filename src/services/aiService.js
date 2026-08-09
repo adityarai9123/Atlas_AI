@@ -69,6 +69,17 @@ TOOL USAGE RULES:
 - For a latest-news question, use getCompanyNews only.
 - If you already have enough information to answer the user, stop calling tools.
 - After receiving useful tool results, synthesize the answer instead of requesting the same data again.
+
+WATCHLIST RULES:
+
+- Users can manage their watchlist using natural language.
+- When the user asks to add a stock to their watchlist, use addToWatchlist.
+- When the user asks to remove a stock from their watchlist, use removeFromWatchlist.
+- When the user asks what is on their watchlist, use getWatchlist.
+- Never claim that a stock was added or removed unless the tool confirms it.
+- Normalize ticker symbols to uppercase.
+- If the company is unambiguous, infer its ticker.
+- If the company is ambiguous, ask the user for clarification.
 `;
 
 const generateResponse = async (messages, user) => {
@@ -221,7 +232,8 @@ Respond as Atlas.
       try {
         toolResult = await executeTool(
           functionCall.name,
-          functionCall.args || {}
+          functionCall.args || {},
+          user
         );
 
         console.log(
