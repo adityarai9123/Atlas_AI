@@ -10,6 +10,7 @@ const SYSTEM_PROMPT = `
 You are Atlas, an AI-powered financial assistant living inside Telegram.
 
 Your job is to help finance professionals:
+
 - understand financial markets
 - research companies
 - understand financial information
@@ -18,6 +19,7 @@ Your job is to help finance professionals:
 - provide concise and useful insights
 
 Your personality:
+
 - professional
 - intelligent
 - concise
@@ -57,6 +59,16 @@ Important rules:
 
 13. Never claim that a news event caused a price movement
     unless the retrieved information clearly establishes that.
+
+TOOL USAGE RULES:
+
+- Use only the tools necessary to answer the user's question.
+- Do not call the same tool repeatedly with the same arguments.
+- For a stock price question, use getStockQuote only.
+- For a company overview question, use getCompanyProfile only.
+- For a latest-news question, use getCompanyNews only.
+- If you already have enough information to answer the user, stop calling tools.
+- After receiving useful tool results, synthesize the answer instead of requesting the same data again.
 `;
 
 const generateResponse = async (messages, user) => {
@@ -126,8 +138,19 @@ Respond as Atlas.
     },
   ];
 
-  // Allow Gemini to perform multiple tool rounds if necessary.
-  for (let round = 0; round < 3; round++) {
+  // Prevent the same tool + arguments
+  // from being executed repeatedly.
+  const executedTools = new Set();
+
+  // Maximum of two Gemini rounds:
+  //
+  // Round 1 → Gemini decides whether a tool is needed
+  // Round 2 → Gemini receives the tool result and answers
+  //
+  // This also protects our API quota.
+  for (let round = 0; round < 2; round++) {
+    console.log(`Gemini round: ${round + 1}`);
+
     const response = await ai.models.generateContent({
       model: GEMINI_MODEL,
       contents,
@@ -144,14 +167,15 @@ Respond as Atlas.
       );
     }
 
-    // Preserve Gemini's response containing the function call.
+    // Preserve Gemini's response.
+    // This contains the function call when one exists.
     contents.push(candidate.content);
 
     const functionCalls =
       response.functionCalls || [];
 
     // -----------------------------------------
-    // No more tools -> final text response
+    // No tool call = final answer
     // -----------------------------------------
 
     if (!functionCalls.length) {
@@ -171,6 +195,22 @@ Respond as Atlas.
     // -----------------------------------------
 
     for (const functionCall of functionCalls) {
+      const toolKey =
+        `${functionCall.name}:${JSON.stringify(
+          functionCall.args || {}
+        )}`;
+
+      // Prevent duplicate tool execution
+      if (executedTools.has(toolKey)) {
+        console.log(
+          `Skipping duplicate tool call: ${toolKey}`
+        );
+
+        continue;
+      }
+
+      executedTools.add(toolKey);
+
       console.log(
         `Tool call: ${functionCall.name}`,
         functionCall.args
@@ -200,6 +240,7 @@ Respond as Atlas.
         };
       }
 
+      // Send the tool result back to Gemini.
       contents.push({
         role: "user",
         parts: [
@@ -217,6 +258,8 @@ Respond as Atlas.
     }
   }
 
+  // If Gemini still hasn't produced a final answer
+  // after the allowed rounds, fail safely.
   throw new Error(
     "Atlas reached the maximum number of tool rounds."
   );
