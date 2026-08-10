@@ -2,6 +2,7 @@ const { GoogleGenAI } = require("@google/genai");
 
 const financeTools = require("../../tools/financeTools");
 const userTools = require("../../tools/userTools");
+const briefingTools = require("../../tools/briefingTools");
 
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
@@ -10,11 +11,10 @@ const ai = new GoogleGenAI({
 const allTools = {
   ...financeTools,
   ...userTools,
+  ...briefingTools,
 };
 
 const GEMINI_MODEL = "gemini-3.5-flash";
-
-
 
 const toolDefinitions = [
   {
@@ -67,6 +67,7 @@ const toolDefinitions = [
           required: ["symbol"],
         },
       },
+
       {
         name: "addToWatchlist",
         description: "Add a stock ticker to the user's personal watchlist.",
@@ -82,6 +83,7 @@ const toolDefinitions = [
           required: ["symbol"],
         },
       },
+
       {
         name: "removeFromWatchlist",
         description:
@@ -97,9 +99,32 @@ const toolDefinitions = [
           required: ["symbol"],
         },
       },
+
       {
         name: "getWatchlist",
         description: "Get the user's current personal stock watchlist.",
+        parameters: {
+          type: "OBJECT",
+          properties: {},
+        },
+      },
+
+      {
+        name: "getWatchlistBriefingData",
+        description:
+          "Retrieve current market quotes and recent news for every stock in the user's watchlist, together with the user's financial interests and preferred topics.",
+        parameters: {
+          type: "OBJECT",
+          properties: {},
+        },
+      },
+
+      {
+        name: "getWatchlistBriefingData",
+
+        description:
+          "Retrieve current market prices and relevant recent news for every company in the user's watchlist. Use this when the user asks for a watchlist briefing, what they should know about their watchlist, important developments in their stocks, or a summary of their watchlist.",
+
         parameters: {
           type: "OBJECT",
           properties: {},

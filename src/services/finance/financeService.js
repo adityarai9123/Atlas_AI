@@ -10,17 +10,23 @@ const finnhub = axios.create({
   },
 });
 
+// -----------------------------------------
+// Get stock quote
+// -----------------------------------------
+
 const getQuote = async (symbol) => {
+  const normalizedSymbol = symbol.toUpperCase();
+
   const response = await finnhub.get("/quote", {
     params: {
-      symbol: symbol.toUpperCase(),
+      symbol: normalizedSymbol,
     },
   });
 
   const data = response.data;
 
   return {
-    symbol: symbol.toUpperCase(),
+    symbol: normalizedSymbol,
     price: data.c,
     change: data.d,
     changePercent: data.dp,
@@ -31,10 +37,16 @@ const getQuote = async (symbol) => {
   };
 };
 
+// -----------------------------------------
+// Get company profile
+// -----------------------------------------
+
 const getCompanyProfile = async (symbol) => {
+  const normalizedSymbol = symbol.toUpperCase();
+
   const response = await finnhub.get("/stock/profile2", {
     params: {
-      symbol: symbol.toUpperCase(),
+      symbol: normalizedSymbol,
     },
   });
 
@@ -51,31 +63,64 @@ const getCompanyProfile = async (symbol) => {
   };
 };
 
-const getCompanyNews = async (symbol) => {
+// -----------------------------------------
+// Get relevant company news
+// -----------------------------------------
+
+const getCompanyNews = async (symbol, companyName = "") => {
+  const normalizedSymbol = symbol.toUpperCase();
+
   const today = new Date();
 
   const to = today.toISOString().split("T")[0];
 
   const fromDate = new Date();
+
   fromDate.setDate(fromDate.getDate() - 7);
 
   const from = fromDate.toISOString().split("T")[0];
 
+  // ---------------------------------------
+  // Get news
+  // ---------------------------------------
+
   const response = await finnhub.get("/company-news", {
     params: {
-      symbol: symbol.toUpperCase(),
+      symbol: normalizedSymbol,
       from,
       to,
     },
   });
 
-  return response.data.slice(0, 5).map((article) => ({
-    headline: article.headline,
-    source: article.source,
-    summary: article.summary,
-    url: article.url,
-    datetime: article.datetime,
-  }));
+  const articles = response.data
+    .filter((article) => article.headline)
+    .map((article) => ({
+      headline: article.headline,
+      source: article.source,
+      summary: article.summary || "",
+      url: article.url,
+      datetime: article.datetime,
+    }));
+
+  // ---------------------------------------
+  // Build search terms
+  // ---------------------------------------
+
+  const searchTerms = [normalizedSymbol, companyName]
+    .filter(Boolean)
+    .map((term) => term.toLowerCase());
+
+  // ---------------------------------------
+  // Filter relevant articles
+  // ---------------------------------------
+
+  const relevantArticles = articles.filter((article) => {
+    const text = `${article.headline} ${article.summary}`.toLowerCase();
+
+    return searchTerms.some((term) => text.includes(term));
+  });
+
+  return relevantArticles.slice(0, 5);
 };
 
 module.exports = {

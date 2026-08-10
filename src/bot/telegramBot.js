@@ -148,8 +148,20 @@ bot.on("text", async (ctx) => {
   } catch (error) {
     console.error("Telegram error:", error);
 
+    if (
+      error.status === 429 ||
+      error.message?.includes("quota") ||
+      error.message?.includes("RESOURCE_EXHAUSTED")
+    ) {
+      await ctx.reply(
+        "Atlas is temporarily experiencing high AI service usage. Please try again shortly.",
+      );
+
+      return;
+    }
+
     await ctx.reply(
-      "I'm having trouble processing that right now. Please try again.",
+      "I couldn't complete that request right now. Please try again.",
     );
   }
 });

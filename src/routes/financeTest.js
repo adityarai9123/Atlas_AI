@@ -6,6 +6,10 @@ const {
   getCompanyNews,
 } = require("../services/finance/financeService");
 
+const {
+  buildWatchlistData,
+} = require("../services/briefing/briefingService");
+
 const router = express.Router();
 
 router.get("/quote/:symbol", async (req, res) => {
@@ -77,5 +81,44 @@ router.get("/news/:symbol", async (req, res) => {
     });
   }
 });
+
+router.get(
+  "/watchlist/:telegramId",
+  async (req, res) => {
+    try {
+      const User = require("../models/User");
+
+      const user = await User.findOne({
+        telegramId: req.params.telegramId,
+      });
+
+      if (!user) {
+        return res.status(404).json({
+          error: "User not found",
+        });
+      }
+
+      const data = await buildWatchlistData(
+        user.watchlist
+      );
+
+      res.json({
+        telegramId: user.telegramId,
+        watchlist: user.watchlist,
+        data,
+      });
+    } catch (error) {
+      console.error(
+        "Watchlist briefing error:",
+        error.message
+      );
+
+      res.status(500).json({
+        error:
+          "Unable to build watchlist data",
+      });
+    }
+  }
+);
 
 module.exports = router;

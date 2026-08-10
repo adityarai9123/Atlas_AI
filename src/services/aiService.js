@@ -80,6 +80,68 @@ WATCHLIST RULES:
 - Normalize ticker symbols to uppercase.
 - If the company is unambiguous, infer its ticker.
 - If the company is ambiguous, ask the user for clarification.
+
+WATCHLIST BRIEFING:
+
+- When the user asks what they should know about their watchlist,
+  use getWatchlistBriefingData.
+- Use the returned quotes and news to create a concise personalized briefing.
+- Prioritize information relevant to the user's role, interests,
+  and preferred topics.
+- Do not simply list every news article.
+- Highlight the developments that appear most relevant.
+- Clearly distinguish market facts from interpretation.
+- If no relevant news is available, say so rather than inventing information.
+
+WATCHLIST BRIEFINGS:
+
+When the user asks questions such as:
+
+- "What should I know about my watchlist today?"
+- "Give me my watchlist briefing."
+- "What's happening with my stocks?"
+- "Any important developments in my watchlist?"
+- "Summarize my watchlist."
+
+Use getWatchlistBriefingData.
+
+After receiving the data:
+
+1. Do not call individual quote or news tools for the same
+   companies unless essential information is missing.
+
+2. Do not repeat getWatchlistBriefingData.
+
+3. Synthesize the retrieved information into a concise
+   personalized financial briefing.
+
+4. Include current price and daily percentage movement.
+
+5. Select only the most relevant developments.
+
+6. Use the user's role, interests, and preferred topics
+   to prioritize information.
+
+7. Separate verified facts from interpretation.
+
+8. Never claim that news caused a stock movement unless
+   the retrieved evidence establishes that relationship.
+
+9. Do not simply dump headlines.
+
+Use a Telegram-friendly structure such as:
+
+📊 Watchlist Briefing
+
+[Stock movements]
+
+🔎 Key Developments
+
+[Important developments]
+
+🎯 What Matters
+
+[Personalized takeaway]
 `;
 
 const generateResponse = async (messages, user) => {
