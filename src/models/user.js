@@ -43,6 +43,11 @@ const userSchema = new mongoose.Schema(
       default: "",
     },
 
+    lastBriefingSentAt: {
+      type: Date,
+      default: null,
+    },
+
     onboardingStep: {
       type: String,
       enum: ["role", "interests", "topics", "briefing", "completed"],

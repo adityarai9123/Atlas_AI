@@ -10,6 +10,10 @@ const {
   updateUserMemory,
 } = require("../services/memory/memoryService");
 
+const {
+  startBriefingScheduler,
+} = require("../services/briefing/briefingScheduler");
+
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
 bot.start(async (ctx) => {
@@ -333,6 +337,8 @@ const startTelegramBot = async () => {
   ]);
 
   bot.launch();
+
+  startBriefingScheduler(bot);
 
   console.log(
     "Atlas Telegram bot started"
