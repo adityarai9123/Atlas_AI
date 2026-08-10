@@ -12,6 +12,156 @@ const {
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
+bot.start(async (ctx) => {
+  await ctx.reply(
+    `Welcome to Atlas, your AI financial assistant. 📊
+
+You can ask me things like:
+
+• What's NVDA trading at?
+• Add TSM to my watchlist.
+• What's on my watchlist?
+• What's the latest news on Nvidia?
+• What should I know about my watchlist?
+
+Commands:
+
+/watchlist — View your watchlist
+/briefing — Get your personalized watchlist briefing`
+  );
+});
+
+bot.command("briefing", async (ctx) => {
+  try {
+    const telegramId = String(ctx.from.id);
+
+    const firstName =
+      ctx.from.first_name || "";
+
+    const username =
+      ctx.from.username || "";
+
+    let user = await User.findOne({
+      telegramId,
+    });
+
+    if (!user) {
+      user = await User.create({
+        telegramId,
+        firstName,
+        username,
+      });
+
+      console.log(
+        `New Atlas user: ${telegramId}`
+      );
+    }
+
+    const briefingRequest =
+      "What should I know about my watchlist today?";
+
+    await Conversation.create({
+      telegramId,
+      role: "user",
+      content: briefingRequest,
+    });
+
+    const history = await Conversation.find({
+      telegramId,
+    })
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .lean();
+
+    history.reverse();
+
+    const messages = history.map(
+      (message) => ({
+        role: message.role,
+        content: message.content,
+      })
+    );
+
+    const response =
+      await generateResponse(
+        messages,
+        user
+      );
+
+    await Conversation.create({
+      telegramId,
+      role: "assistant",
+      content: response,
+    });
+
+    await ctx.reply(response);
+  } catch (error) {
+    console.error(
+      "Briefing command error:",
+      error
+    );
+
+    if (
+      error.status === 429 ||
+      error.message?.includes("quota") ||
+      error.message?.includes(
+        "RESOURCE_EXHAUSTED"
+      )
+    ) {
+      await ctx.reply(
+        "Atlas is temporarily unable to generate the AI briefing. Please try again shortly."
+      );
+
+      return;
+    }
+
+    await ctx.reply(
+      "I couldn't generate your briefing right now. Please try again."
+    );
+  }
+});
+
+bot.command("watchlist", async (ctx) => {
+  try {
+    const telegramId = String(
+      ctx.from.id
+    );
+
+    const user =
+      await User.findOne({
+        telegramId,
+      });
+
+    if (!user || !user.watchlist.length) {
+      await ctx.reply(
+        "Your watchlist is currently empty."
+      );
+
+      return;
+    }
+
+    const watchlist =
+      user.watchlist
+        .map(
+          (symbol) => `• ${symbol}`
+        )
+        .join("\n");
+
+    await ctx.reply(
+      `📋 Your Watchlist\n\n${watchlist}`
+    );
+  } catch (error) {
+    console.error(
+      "Watchlist command error:",
+      error
+    );
+
+    await ctx.reply(
+      "I couldn't retrieve your watchlist right now."
+    );
+  }
+});
+
 bot.on("text", async (ctx) => {
   try {
     const telegramId = String(ctx.from.id);
@@ -166,10 +316,27 @@ bot.on("text", async (ctx) => {
   }
 });
 
-const startTelegramBot = () => {
+const startTelegramBot = async () => {
+  await bot.telegram.setMyCommands([
+    {
+      command: "start",
+      description: "Start using Atlas",
+    },
+    {
+      command: "briefing",
+      description: "Get your watchlist briefing",
+    },
+    {
+      command: "watchlist",
+      description: "View your watchlist",
+    },
+  ]);
+
   bot.launch();
 
-  console.log("Atlas Telegram bot started");
+  console.log(
+    "Atlas Telegram bot started"
+  );
 };
 
 module.exports = startTelegramBot;

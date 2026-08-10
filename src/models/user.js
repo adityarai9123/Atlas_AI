@@ -45,13 +45,7 @@ const userSchema = new mongoose.Schema(
 
     onboardingStep: {
       type: String,
-      enum: [
-        "role",
-        "interests",
-        "topics",
-        "briefing",
-        "completed",
-      ],
+      enum: ["role", "interests", "topics", "briefing", "completed"],
       default: "role",
     },
 
@@ -59,10 +53,15 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+
+    onboardingStep: {
+      type: String,
+      default: "role",
+    },
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 module.exports = mongoose.model("User", userSchema);
