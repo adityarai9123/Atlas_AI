@@ -384,7 +384,20 @@ bot.on("photo", async (ctx) => {
       image: { buffer, mimeType },
     });
   } catch (error) {
-    console.error("Photo processing error:", error);
+    console.error("Photo processing error:", error.status, error.message);
+
+    if (
+      error.status === 429 ||
+      error.message?.includes("quota") ||
+      error.message?.includes("RESOURCE_EXHAUSTED")
+    ) {
+      await ctx.reply(
+        "Atlas is temporarily experiencing high AI service usage. Please try again shortly.",
+      );
+
+      return;
+    }
+
     await ctx.reply("I couldn't process that image. Please try again.");
   }
 });
@@ -415,7 +428,20 @@ bot.on("voice", async (ctx) => {
 
     await processUserMessage(ctx, transcription);
   } catch (error) {
-    console.error("Voice processing error:", error);
+    console.error("Voice processing error:", error.status, error.message);
+
+    if (
+      error.status === 429 ||
+      error.message?.includes("quota") ||
+      error.message?.includes("RESOURCE_EXHAUSTED")
+    ) {
+      await ctx.reply(
+        "Atlas is temporarily experiencing high AI service usage. Please try again shortly.",
+      );
+
+      return;
+    }
+
     await ctx.reply("I couldn't process that voice message. Please try again.");
   }
 });
