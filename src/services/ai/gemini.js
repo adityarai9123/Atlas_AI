@@ -111,16 +111,6 @@ const toolDefinitions = [
 
       {
         name: "getWatchlistBriefingData",
-        description:
-          "Retrieve current market quotes and recent news for every stock in the user's watchlist, together with the user's financial interests and preferred topics.",
-        parameters: {
-          type: "OBJECT",
-          properties: {},
-        },
-      },
-
-      {
-        name: "getWatchlistBriefingData",
 
         description:
           "Retrieve current market prices and relevant recent news for every company in the user's watchlist. Use this when the user asks for a watchlist briefing, what they should know about their watchlist, important developments in their stocks, or a summary of their watchlist.",

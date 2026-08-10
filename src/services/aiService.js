@@ -81,17 +81,6 @@ WATCHLIST RULES:
 - If the company is unambiguous, infer its ticker.
 - If the company is ambiguous, ask the user for clarification.
 
-WATCHLIST BRIEFING:
-
-- When the user asks what they should know about their watchlist,
-  use getWatchlistBriefingData.
-- Use the returned quotes and news to create a concise personalized briefing.
-- Prioritize information relevant to the user's role, interests,
-  and preferred topics.
-- Do not simply list every news article.
-- Highlight the developments that appear most relevant.
-- Clearly distinguish market facts from interpretation.
-- If no relevant news is available, say so rather than inventing information.
 
 WATCHLIST BRIEFINGS:
 
