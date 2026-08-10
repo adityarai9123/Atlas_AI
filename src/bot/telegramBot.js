@@ -102,7 +102,8 @@ bot.command("briefing", async (ctx) => {
   } catch (error) {
     console.error(
       "Briefing command error:",
-      error
+      error.status,
+      error.message
     );
 
     if (
@@ -127,6 +128,8 @@ bot.command("briefing", async (ctx) => {
 
 bot.command("watchlist", async (ctx) => {
   try {
+    console.log("WATCHLIST COMMAND HIT");
+
     const telegramId = String(
       ctx.from.id
     );
@@ -300,7 +303,7 @@ bot.on("text", async (ctx) => {
 
     await ctx.reply(response);
   } catch (error) {
-    console.error("Telegram error:", error);
+    console.error("Telegram error:",error.status, error.message );
 
     if (
       error.status === 429 ||

@@ -28,6 +28,7 @@ const buildWatchlistData = async (watchlist) => {
       } catch (error) {
         console.error(
           `Failed to build data for ${symbol}:`,
+          error.status,
           error.message
         );
 
