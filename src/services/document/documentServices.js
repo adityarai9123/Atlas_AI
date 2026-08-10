@@ -47,8 +47,33 @@ const getLatestDocument = async (telegramId) => {
   });
 };
 
+const listDocuments = async (telegramId) => {
+  return await Document.find({ telegramId })
+    .select("fileName createdAt")
+    .sort({ createdAt: -1 })
+    .lean();
+};
+
+const getDocumentContent = async (telegramId, fileName) => {
+  let doc = await Document.findOne({
+    telegramId,
+    fileName: { $regex: new RegExp("^" + fileName.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&') + "$", "i") },
+  }).lean();
+  
+  if (doc) return doc;
+  
+  doc = await Document.findOne({
+    telegramId,
+    fileName: { $regex: new RegExp(fileName.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), "i") },
+  }).lean();
+
+  return doc;
+};
+
 module.exports = {
   extractPdfText,
   saveDocument,
   getLatestDocument,
+  listDocuments,
+  getDocumentContent,
 };

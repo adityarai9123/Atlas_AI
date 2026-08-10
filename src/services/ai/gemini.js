@@ -3,6 +3,7 @@ const { GoogleGenAI } = require("@google/genai");
 const financeTools = require("../../tools/financeTools");
 const userTools = require("../../tools/userTools");
 const briefingTools = require("../../tools/briefingTools");
+const documentTools = require("../../tools/documentTools");
 
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
@@ -12,6 +13,7 @@ const allTools = {
   ...financeTools,
   ...userTools,
   ...briefingTools,
+  ...documentTools,
 };
 
 const GEMINI_MODEL = "gemini-3.5-flash";
@@ -111,13 +113,127 @@ const toolDefinitions = [
 
       {
         name: "getWatchlistBriefingData",
-
         description:
           "Retrieve current market prices and relevant recent news for every company in the user's watchlist. Use this when the user asks for a watchlist briefing, what they should know about their watchlist, important developments in their stocks, or a summary of their watchlist.",
-
         parameters: {
           type: "OBJECT",
           properties: {},
+        },
+      },
+
+      {
+        name: "getCompanyFundamentals",
+        description: "Get key financial metrics/fundamentals for a publicly traded company (P/E, EPS, market cap, 52-week high/low, revenue growth, net margin, etc.).",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            symbol: {
+              type: "STRING",
+              description: "Stock ticker symbol (e.g. NVDA, AMD).",
+            },
+          },
+          required: ["symbol"],
+        },
+      },
+
+      {
+        name: "getEarnings",
+        description: "Get the recent actual earnings reports and future/next expected earnings date for a publicly traded company.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            symbol: {
+              type: "STRING",
+              description: "Stock ticker symbol.",
+            },
+          },
+          required: ["symbol"],
+        },
+      },
+
+      {
+        name: "getSecFilings",
+        description: "Get a list of recent SEC filings (10-K, 10-Q, 8-K) with dates and links for a publicly traded company.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            symbol: {
+              type: "STRING",
+              description: "Stock ticker symbol.",
+            },
+          },
+          required: ["symbol"],
+        },
+      },
+
+      {
+        name: "listDocuments",
+        description: "List all PDF documents uploaded by the user.",
+        parameters: {
+          type: "OBJECT",
+          properties: {},
+        },
+      },
+
+      {
+        name: "getDocumentContent",
+        description: "Retrieve the text content of a specific uploaded document by its file name to answer questions about it.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            fileName: {
+              type: "STRING",
+              description: "The name of the file to retrieve.",
+            },
+          },
+          required: ["fileName"],
+        },
+      },
+
+      {
+        name: "createAlert",
+        description: "Create an alert for a specific stock ticker and threshold percent change (e.g., alert when MSFT moves 5% or more).",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            symbol: {
+              type: "STRING",
+              description: "Stock ticker symbol.",
+            },
+            threshold: {
+              type: "NUMBER",
+              description: "Percentage movement threshold (e.g. 5 for 5%).",
+            },
+            type: {
+              type: "STRING",
+              description: "Type of alert. Defaults to 'price_move'. Possible values: 'price_move', 'news', 'filing'.",
+            },
+          },
+          required: ["symbol", "threshold"],
+        },
+      },
+
+      {
+        name: "getAlerts",
+        description: "Retrieve a list of the user's active alerts.",
+        parameters: {
+          type: "OBJECT",
+          properties: {},
+        },
+      },
+
+      {
+        name: "removeAlert",
+        description: "Remove/delete an active alert for a specific stock ticker.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            symbol: {
+              type: "STRING",
+              description: "Stock ticker symbol.",
+            },
+          },
+          required: ["symbol"],
         },
       },
     ],
@@ -137,9 +253,18 @@ const executeTool = async (name, args, user) => {
   });
 };
 
+const generateText = async (prompt) => {
+  const response = await ai.models.generateContent({
+    model: GEMINI_MODEL,
+    contents: prompt,
+  });
+  return response.text;
+};
+
 module.exports = {
   ai,
   GEMINI_MODEL,
   toolDefinitions,
   executeTool,
+  generateText,
 };

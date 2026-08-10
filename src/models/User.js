@@ -74,12 +74,15 @@ const userSchema = new mongoose.Schema(
       default: false,
     },
 
-    onboardingStep: {
-      type: String,
-      default: "role",
-    },
-
-
+    alerts: [
+      {
+        symbol: { type: String, required: true },
+        threshold: { type: Number, required: true },
+        type: { type: String, default: "price_move" },
+        enabled: { type: Boolean, default: true },
+        lastTriggeredAt: { type: Date, default: null },
+      },
+    ],
   },
   {
     timestamps: true,

@@ -20,6 +20,8 @@ const {
   startBriefingScheduler,
 } = require("../services/briefing/briefingScheduler");
 
+const { transcribeAudio } = require("../services/ai/transcribeService");
+
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
 bot.start(async (ctx) => {
@@ -239,141 +241,112 @@ bot.on("document", async (ctx) => {
 });
 
 
+const processUserMessage = async (ctx, userMessage, options = {}) => {
+  const telegramId = String(ctx.from.id);
+  const firstName = ctx.from.first_name || "";
+  const username = ctx.from.username || "";
+
+  // 1. Find or create user
+  let user = await User.findOne({ telegramId });
+
+  if (!user) {
+    user = await User.create({
+      telegramId,
+      firstName,
+      username,
+    });
+
+    console.log(`New Atlas user: ${telegramId}`);
+  }
+
+  // 2. Save user message
+  await Conversation.create({
+    telegramId,
+    role: "user",
+    content: userMessage,
+  });
+
+  // 3. Extract memory only during onboarding
+  if (!user.onboardingCompleted) {
+    const memory = await extractMemory(userMessage, user);
+
+    console.log("Extracted memory:", memory);
+
+    user = await updateUserMemory(user, memory);
+  }
+
+  // 4. Update onboarding state
+  if (user.onboardingStep === "role" && user.role) {
+    user.onboardingStep = "interests";
+  }
+
+  if (
+    user.onboardingStep === "interests" &&
+    (user.interests.length || user.watchlist.length)
+  ) {
+    user.onboardingStep = "topics";
+  }
+
+  if (user.onboardingStep === "topics" && user.preferredTopics.length) {
+    user.onboardingStep = "briefing";
+  }
+
+  // 5. Handle skip during onboarding
+  const skipWords = [
+    "skip",
+    "skip this",
+    "skip onboarding",
+    "later",
+    "not now",
+  ];
+
+  if (skipWords.includes(userMessage.toLowerCase().trim())) {
+    user.onboardingStep = "completed";
+    user.onboardingCompleted = true;
+  }
+
+  // 6. Complete onboarding
+  if (user.onboardingStep === "briefing" && user.briefingTime) {
+    user.onboardingStep = "completed";
+    user.onboardingCompleted = true;
+  }
+
+  await user.save();
+
+  // 7. Get recent conversation history
+  const history = await Conversation.find({
+    telegramId,
+  })
+    .sort({ createdAt: -1 })
+    .limit(12)
+    .lean();
+
+  history.reverse();
+
+  const messages = history.map((message) => ({
+    role: message.role,
+    content: message.content,
+  }));
+
+  // 8. Generate Atlas response (passing options.image if present)
+  const response = await generateResponse(messages, user, options.image);
+
+  // 9. Save assistant response
+  await Conversation.create({
+    telegramId,
+    role: "assistant",
+    content: response,
+  });
+
+  // 10. Send Telegram response
+  await ctx.reply(response);
+};
+
 bot.on("text", async (ctx) => {
   try {
-    const telegramId = String(ctx.from.id);
-
-    const firstName = ctx.from.first_name || "";
-    const username = ctx.from.username || "";
-
-    const userMessage = ctx.message.text;
-
-    // --------------------------------
-    // 1. Find or create user
-    // --------------------------------
-
-    let user = await User.findOne({ telegramId });
-
-    if (!user) {
-      user = await User.create({
-        telegramId,
-        firstName,
-        username,
-      });
-
-      console.log(`New Atlas user: ${telegramId}`);
-    }
-
-    // --------------------------------
-    // 2. Save user message
-    // --------------------------------
-
-    await Conversation.create({
-      telegramId,
-      role: "user",
-      content: userMessage,
-    });
-
-    // --------------------------------
-    // 3. Extract memory only during onboarding
-    // --------------------------------
-
-    if (!user.onboardingCompleted) {
-      const memory = await extractMemory(userMessage, user);
-
-      console.log("Extracted memory:", memory);
-
-      user = await updateUserMemory(user, memory);
-    }
-
-    // --------------------------------
-    // 4. Update onboarding state
-    // --------------------------------
-
-    if (user.onboardingStep === "role" && user.role) {
-      user.onboardingStep = "interests";
-    }
-
-    if (
-      user.onboardingStep === "interests" &&
-      (user.interests.length || user.watchlist.length)
-    ) {
-      user.onboardingStep = "topics";
-    }
-
-    if (user.onboardingStep === "topics" && user.preferredTopics.length) {
-      user.onboardingStep = "briefing";
-    }
-
-    // --------------------------------
-    // 5. Handle skip during onboarding
-    // --------------------------------
-
-    const skipWords = [
-      "skip",
-      "skip this",
-      "skip onboarding",
-      "later",
-      "not now",
-    ];
-
-    if (skipWords.includes(userMessage.toLowerCase().trim())) {
-      user.onboardingStep = "completed";
-      user.onboardingCompleted = true;
-    }
-
-    // --------------------------------
-    // 6. Complete onboarding
-    // --------------------------------
-
-    if (user.onboardingStep === "briefing" && user.briefingTime) {
-      user.onboardingStep = "completed";
-      user.onboardingCompleted = true;
-    }
-
-    await user.save();
-
-    // --------------------------------
-    // 7. Get recent conversation history
-    // --------------------------------
-
-    const history = await Conversation.find({
-      telegramId,
-    })
-      .sort({ createdAt: -1 })
-      .limit(12)
-      .lean();
-
-    history.reverse();
-
-    const messages = history.map((message) => ({
-      role: message.role,
-      content: message.content,
-    }));
-
-    // --------------------------------
-    // 8. Generate Atlas response
-    // --------------------------------
-
-    const response = await generateResponse(messages, user);
-
-    // --------------------------------
-    // 9. Save assistant response
-    // --------------------------------
-
-    await Conversation.create({
-      telegramId,
-      role: "assistant",
-      content: response,
-    });
-
-    // --------------------------------
-    // 10. Send Telegram response
-    // --------------------------------
-
-    await ctx.reply(response);
+    await processUserMessage(ctx, ctx.message.text);
   } catch (error) {
-    console.error("Telegram error:",error.status, error.message );
+    console.error("Telegram error:", error.status, error.message);
 
     if (
       error.status === 429 ||
@@ -390,6 +363,60 @@ bot.on("text", async (ctx) => {
     await ctx.reply(
       "I couldn't complete that request right now. Please try again.",
     );
+  }
+});
+
+bot.on("photo", async (ctx) => {
+  try {
+    const photo = ctx.message.photo[ctx.message.photo.length - 1];
+    await ctx.sendChatAction("upload_photo");
+
+    const fileLink = await ctx.telegram.getFileLink(photo.file_id);
+    const response = await axios.get(fileLink.href, {
+      responseType: "arraybuffer",
+    });
+
+    const buffer = Buffer.from(response.data);
+    const mimeType = "image/jpeg";
+    const caption = ctx.message.caption || "Analyze this image.";
+
+    await processUserMessage(ctx, caption, {
+      image: { buffer, mimeType },
+    });
+  } catch (error) {
+    console.error("Photo processing error:", error);
+    await ctx.reply("I couldn't process that image. Please try again.");
+  }
+});
+
+bot.on("voice", async (ctx) => {
+  try {
+    const voice = ctx.message.voice;
+    await ctx.sendChatAction("record_voice");
+
+    const fileLink = await ctx.telegram.getFileLink(voice.file_id);
+    const response = await axios.get(fileLink.href, {
+      responseType: "arraybuffer",
+    });
+
+    const buffer = Buffer.from(response.data);
+    const mimeType = voice.mime_type || "audio/ogg";
+
+    // Transcribe
+    const transcription = await transcribeAudio(buffer, mimeType);
+
+    if (!transcription) {
+      await ctx.reply("I couldn't hear what you said. Please try speaking clearly or send a text message.");
+      return;
+    }
+
+    // Send a status message so they know we transcribed it correctly
+    await ctx.reply(`🎤 *You (Voice):* "${transcription}"`, { parse_mode: "Markdown" });
+
+    await processUserMessage(ctx, transcription);
+  } catch (error) {
+    console.error("Voice processing error:", error);
+    await ctx.reply("I couldn't process that voice message. Please try again.");
   }
 });
 

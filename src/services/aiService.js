@@ -146,7 +146,7 @@ DOCUMENT INTELLIGENCE:
 - Keep document answers concise and structured for Telegram.
 `;
 
-const generateResponse = async (messages, user) => {
+const generateResponse = async (messages, user, image = null) => {
   const conversation = messages
     .filter((message) => message.role !== "system")
     .map((message) => {
@@ -217,6 +217,15 @@ Respond as Atlas.
       ],
     },
   ];
+
+  if (image && image.buffer && image.mimeType) {
+    contents[0].parts.push({
+      inlineData: {
+        data: image.buffer.toString("base64"),
+        mimeType: image.mimeType,
+      },
+    });
+  }
 
   // Prevent the same tool + arguments
   // from being executed repeatedly.
