@@ -8,6 +8,10 @@ const startTelegramBot = require("./bot/telegramBot");
 
 const financeTestRoutes = require("./routes/financeTest");
 
+const {
+  startBriefingScheduler,
+} = require("./services/briefing/briefingScheduler");
+
 const app = express();
 
 app.use(cors());
@@ -31,4 +35,10 @@ app.listen(PORT,"0.0.0.0", () => {
   console.log(`Atlas server running on port http://localhost:${PORT}`);
 });
 
-startTelegramBot();
+const start = async () => {
+  const bot = await startTelegramBot();
+
+  startBriefingScheduler(bot);
+};
+
+start();

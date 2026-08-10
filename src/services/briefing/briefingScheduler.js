@@ -1,236 +1,166 @@
 const cron = require("node-cron");
+const mongoose = require("mongoose");
 
 const User = require("../../models/User");
 const Conversation = require("../../models/Conversation");
 
-const {
-  generateResponse,
-} = require("../aiService");
+const { buildWatchlistData } = require("./briefingService");
 
-const runScheduledBriefings = async (bot) => {
-  try {
-    const users = await User.find({
-      briefingTime: {
-        $ne: "",
-      },
-      onboardingCompleted: true,
-    });
+const { shouldSendBriefing } = require("./briefingFilter");
 
-    if (!users.length) {
-      return;
-    }
-
-    const now = new Date();
-
-    // Convert current time to India time.
-    const indiaTime = new Intl.DateTimeFormat(
-      "en-IN",
-      {
-        timeZone: "Asia/Kolkata",
-        hour: "numeric",
-        minute: "numeric",
-        hour12: false,
-        weekday: "short",
-      }
-    ).formatToParts(now);
-
-    const parts = {};
-
-    indiaTime.forEach((part) => {
-      parts[part.type] = part.value;
-    });
-
-    const currentHour = Number(parts.hour);
-    const currentMinute = Number(parts.minute);
-    const weekday = parts.weekday;
-
-    // Monday-Friday only
-    const weekdays = [
-      "Mon",
-      "Tue",
-      "Wed",
-      "Thu",
-      "Fri",
-    ];
-
-    if (!weekdays.includes(weekday)) {
-      return;
-    }
-
-    for (const user of users) {
-      try {
-        const briefingTime =
-          user.briefingTime
-            ?.toLowerCase()
-            .trim();
-
-        if (!briefingTime) {
-          continue;
-        }
-
-        // Currently supports examples such as:
-        // "Every weekday at 8 AM"
-        // "Every weekday at 9 AM"
-        // "8 AM"
-
-        const match =
-          briefingTime.match(
-            /(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i
-          );
-
-        if (!match) {
-          console.log(
-            `Unable to parse briefing time for ${user.telegramId}: ${user.briefingTime}`
-          );
-
-          continue;
-        }
-
-        let targetHour =
-          Number(match[1]);
-
-        const targetMinute =
-          match[2]
-            ? Number(match[2])
-            : 0;
-
-        const meridiem =
-          match[3].toLowerCase();
-
-        if (
-          meridiem === "pm" &&
-          targetHour !== 12
-        ) {
-          targetHour += 12;
-        }
-
-        if (
-          meridiem === "am" &&
-          targetHour === 12
-        ) {
-          targetHour = 0;
-        }
-
-        if (
-          currentHour !== targetHour ||
-          currentMinute !== targetMinute
-        ) {
-          continue;
-        }
-
-        // Prevent duplicate briefing in the same minute/day.
-        if (user.lastBriefingSentAt) {
-          const lastSent =
-            new Date(
-              user.lastBriefingSentAt
-            );
-
-          const sameDay =
-            lastSent.toLocaleDateString(
-              "en-IN",
-              {
-                timeZone: "Asia/Kolkata",
-              }
-            ) ===
-            now.toLocaleDateString(
-              "en-IN",
-              {
-                timeZone: "Asia/Kolkata",
-              }
-            );
-
-          if (sameDay) {
-            continue;
-          }
-        }
-
-        console.log(
-          `Generating scheduled briefing for ${user.telegramId}`
-        );
-
-        const briefingRequest =
-          "What should I know about my watchlist today?";
-
-        await Conversation.create({
-          telegramId: user.telegramId,
-          role: "user",
-          content: briefingRequest,
-        });
-
-        const history =
-          await Conversation.find({
-            telegramId:
-              user.telegramId,
-          })
-            .sort({
-              createdAt: -1,
-            })
-            .limit(10)
-            .lean();
-
-        history.reverse();
-
-        const messages =
-          history.map(
-            (message) => ({
-              role: message.role,
-              content:
-                message.content,
-            })
-          );
-
-        const response =
-          await generateResponse(
-            messages,
-            user
-          );
-
-        await Conversation.create({
-          telegramId:
-            user.telegramId,
-          role: "assistant",
-          content: response,
-        });
-
-        await user.updateOne({
-          lastBriefingSentAt: now,
-        });
-
-        await bot.telegram.sendMessage(
-          user.telegramId,
-          response
-        );
-      } catch (error) {
-        console.error(
-          `Scheduled briefing failed for ${user.telegramId}:`,
-          error.message
-        );
-      }
-    }
-  } catch (error) {
-    console.error(
-      "Briefing scheduler error:",
-      error.message
-    );
-  }
-};
+const { generateResponse } = require("../aiService");
 
 const startBriefingScheduler = (bot) => {
-  cron.schedule(
-    "* * * * *",
-    async () => {
-      await runScheduledBriefings(bot);
-    },
-    {
-      timezone: "Asia/Kolkata",
-    }
-  );
+  // Check every minute.
+  cron.schedule("* * * * *", async () => {
+      if (mongoose.connection.readyState !== 1) {
+        console.log("MongoDB is not connected. Skipping briefing cycle.");
+        return;
+      }
+    
+    try {
+      const users = await User.find({
+        onboardingCompleted: true,
+        briefingEnabled: true,
+        briefingTime: {
+          $ne: "",
+        },
+        "watchlist.0": {
+          $exists: true,
+        },
+      });
 
-  console.log(
-    "Atlas briefing scheduler started"
-  );
+      for (const user of users) {
+        try {
+          if (!isUserBriefingDue(user)) {
+            continue;
+          }
+
+          console.log(`Briefing due for ${user.telegramId}`);
+
+          const watchlistData = await buildWatchlistData(user.watchlist);
+
+          // --------------------------------
+          // Noise filtering
+          // --------------------------------
+
+          if (!shouldSendBriefing(watchlistData, user.alertThreshold || 5)) {
+            console.log(
+              `No meaningful updates for ${user.telegramId}. Staying silent.`,
+            );
+
+            continue;
+          }
+
+          // --------------------------------
+          // Generate personalized briefing
+          // --------------------------------
+
+          const messages = [
+            {
+              role: "user",
+              content: "What should I know about my watchlist today?",
+            },
+          ];
+
+          const response = await generateResponse(messages, user);
+
+          // --------------------------------
+          // Save briefing
+          // --------------------------------
+
+          await Conversation.create({
+            telegramId: user.telegramId,
+            role: "assistant",
+            content: response,
+          });
+
+          // --------------------------------
+          // Send Telegram message
+          // --------------------------------
+
+          await bot.telegram.sendMessage(user.telegramId, response);
+
+          console.log(`Briefing sent to ${user.telegramId}`);
+        } catch (error) {
+          console.error(
+            `Briefing failed for ${user.telegramId}:`,
+            error.message,
+          );
+        }
+      }
+    } catch (error) {
+      console.error("Briefing scheduler error:", error.message);
+    }
+  });
+
+  console.log("Atlas briefing scheduler started");
+};
+
+// -----------------------------------------
+// Determine whether a user's briefing
+// is due right now.
+// -----------------------------------------
+
+const isUserBriefingDue = (user) => {
+  if (!user.briefingTime) {
+    return false;
+  }
+
+  const now = new Date();
+
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: user.timezone || "Asia/Kolkata",
+
+    weekday: "short",
+    hour: "numeric",
+    minute: "numeric",
+    hour12: false,
+  });
+
+  const parts = formatter.formatToParts(now);
+
+  const values = {};
+
+  for (const part of parts) {
+    values[part.type] = part.value;
+  }
+
+  const weekday = values.weekday;
+
+  const hour = Number(values.hour);
+
+  const minute = Number(values.minute);
+
+  // Only Monday-Friday for now.
+  if (!["Mon", "Tue", "Wed", "Thu", "Fri"].includes(weekday)) {
+    return false;
+  }
+
+  const briefingText = user.briefingTime.toLowerCase();
+
+  const hourMatch = briefingText.match(/(\d{1,2})\s*(am|pm)/);
+
+  if (!hourMatch) {
+    return false;
+  }
+
+  let targetHour = Number(hourMatch[1]);
+
+  const meridiem = hourMatch[2];
+
+  if (meridiem === "pm" && targetHour !== 12) {
+    targetHour += 12;
+  }
+
+  if (meridiem === "am" && targetHour === 12) {
+    targetHour = 0;
+  }
+
+  return hour === targetHour && minute === 0;
 };
 
 module.exports = {
   startBriefingScheduler,
+  isUserBriefingDue,
 };

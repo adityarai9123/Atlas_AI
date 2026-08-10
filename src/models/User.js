@@ -33,6 +33,11 @@ const userSchema = new mongoose.Schema(
       default: [],
     },
 
+    alertThreshold: {
+      type: Number,
+      default: 5,
+    },
+    
     preferredTopics: {
       type: [String],
       default: [],
@@ -41,6 +46,16 @@ const userSchema = new mongoose.Schema(
     briefingTime: {
       type: String,
       default: "",
+    },
+
+    timezone: {
+      type: String,
+      default: "Asia/Kolkata",
+    },
+
+    briefingEnabled: {
+      type: Boolean,
+      default: true,
     },
 
     lastBriefingSentAt: {
@@ -63,6 +78,8 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: "role",
     },
+
+
   },
   {
     timestamps: true,

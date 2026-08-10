@@ -1,8 +1,6 @@
-const {
-  ai,
-  toolDefinitions,
-  executeTool,
-} = require("./ai/gemini");
+const { ai, toolDefinitions, executeTool } = require("./ai/gemini");
+
+const { getLatestDocument } = require("./document/documentServices");
 
 const GEMINI_MODEL = "gemini-3.5-flash";
 
@@ -131,16 +129,28 @@ Use a Telegram-friendly structure such as:
 🎯 What Matters
 
 [Personalized takeaway]
+
+DOCUMENT INTELLIGENCE:
+
+- If the user asks a question about an uploaded document,
+  use the document content provided in the context.
+
+- Do not invent information that is not present in the document.
+
+- If the answer cannot be found in the document,
+  clearly say that the document does not provide enough information.
+
+- For document summaries, prioritize the most important
+  requirements, decisions, risks, deadlines, and action items.
+
+- Keep document answers concise and structured for Telegram.
 `;
 
 const generateResponse = async (messages, user) => {
   const conversation = messages
     .filter((message) => message.role !== "system")
     .map((message) => {
-      const speaker =
-        message.role === "assistant"
-          ? "Atlas"
-          : "User";
+      const speaker = message.role === "assistant" ? "Atlas" : "User";
 
       return `${speaker}: ${message.content}`;
     })
@@ -156,31 +166,39 @@ Role:
 ${user.role || "Not known"}
 
 Interests:
-${
-    user.interests.length
-      ? user.interests.join(", ")
-      : "None"
-  }
+${user.interests.length ? user.interests.join(", ") : "None"}
 
 Watchlist:
-${
-    user.watchlist.length
-      ? user.watchlist.join(", ")
-      : "Empty"
-  }
+${user.watchlist.length ? user.watchlist.join(", ") : "Empty"}
 
 Preferred topics:
-${
-    user.preferredTopics.length
-      ? user.preferredTopics.join(", ")
-      : "None"
-  }
+${user.preferredTopics.length ? user.preferredTopics.join(", ") : "None"}
 `;
+
+  const latestDocument = await getLatestDocument(user.telegramId);
+
+  const documentText = latestDocument?.text
+    ? latestDocument.text.slice(0, 100000)
+    : "";
+
+  const documentContext = latestDocument
+    ? `
+LATEST UPLOADED DOCUMENT
+
+File:
+${latestDocument.fileName}
+
+Content:
+${documentText}
+`
+    : "";
 
   const prompt = `
 ${SYSTEM_PROMPT}
 
 ${userContext}
+
+${documentContext}
 
 RECENT CONVERSATION:
 
@@ -224,17 +242,14 @@ Respond as Atlas.
     const candidate = response.candidates?.[0];
 
     if (!candidate?.content) {
-      throw new Error(
-        "Gemini returned an empty response."
-      );
+      throw new Error("Gemini returned an empty response.");
     }
 
     // Preserve Gemini's response.
     // This contains the function call when one exists.
     contents.push(candidate.content);
 
-    const functionCalls =
-      response.functionCalls || [];
+    const functionCalls = response.functionCalls || [];
 
     // -----------------------------------------
     // No tool call = final answer
@@ -244,9 +259,7 @@ Respond as Atlas.
       const text = response.text?.trim();
 
       if (!text) {
-        throw new Error(
-          "Gemini returned no text response."
-        );
+        throw new Error("Gemini returned no text response.");
       }
 
       return text;
@@ -257,26 +270,20 @@ Respond as Atlas.
     // -----------------------------------------
 
     for (const functionCall of functionCalls) {
-      const toolKey =
-        `${functionCall.name}:${JSON.stringify(
-          functionCall.args || {}
-        )}`;
+      const toolKey = `${functionCall.name}:${JSON.stringify(
+        functionCall.args || {},
+      )}`;
 
       // Prevent duplicate tool execution
       if (executedTools.has(toolKey)) {
-        console.log(
-          `Skipping duplicate tool call: ${toolKey}`
-        );
+        console.log(`Skipping duplicate tool call: ${toolKey}`);
 
         continue;
       }
 
       executedTools.add(toolKey);
 
-      console.log(
-        `Tool call: ${functionCall.name}`,
-        functionCall.args
-      );
+      console.log(`Tool call: ${functionCall.name}`, functionCall.args);
 
       let toolResult;
 
@@ -284,22 +291,15 @@ Respond as Atlas.
         toolResult = await executeTool(
           functionCall.name,
           functionCall.args || {},
-          user
+          user,
         );
 
-        console.log(
-          `Tool result: ${functionCall.name}`,
-          toolResult
-        );
+        console.log(`Tool result: ${functionCall.name}`, toolResult);
       } catch (error) {
-        console.error(
-          `Tool ${functionCall.name} failed:`,
-          error.message
-        );
+        console.error(`Tool ${functionCall.name} failed:`, error.message);
 
         toolResult = {
-          error:
-            "Unable to retrieve the requested financial data.",
+          error: "Unable to retrieve the requested financial data.",
         };
       }
 
@@ -323,9 +323,7 @@ Respond as Atlas.
 
   // If Gemini still hasn't produced a final answer
   // after the allowed rounds, fail safely.
-  throw new Error(
-    "Atlas reached the maximum number of tool rounds."
-  );
+  throw new Error("Atlas reached the maximum number of tool rounds.");
 };
 
 module.exports = {

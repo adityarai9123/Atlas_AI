@@ -5,6 +5,12 @@ const Conversation = require("../models/Conversation");
 
 const { generateResponse } = require("../services/aiService");
 
+const axios = require("axios");
+
+const {
+  saveDocument,
+} = require("../services/document/documentServices");
+
 const {
   extractMemory,
   updateUserMemory,
@@ -168,6 +174,70 @@ bot.command("watchlist", async (ctx) => {
     );
   }
 });
+
+bot.on("document", async (ctx) => {
+  try {
+    const telegramId = String(ctx.from.id);
+
+    const document = ctx.message.document;
+
+    if (
+      document.mime_type !==
+      "application/pdf"
+    ) {
+      await ctx.reply(
+        "For now, Atlas supports PDF documents. Please upload a PDF."
+      );
+
+      return;
+    }
+
+    await ctx.reply(
+      "📄 I've received your PDF. I'm extracting the document now..."
+    );
+
+    const fileLink =
+      await ctx.telegram.getFileLink(
+        document.file_id
+      );
+
+    const response = await axios.get(
+      fileLink.href,
+      {
+        responseType: "arraybuffer",
+      }
+    );
+
+    const savedDocument =
+      await saveDocument({
+        telegramId,
+        fileName:
+          document.file_name ||
+          "uploaded-document.pdf",
+        mimeType:
+          document.mime_type,
+        buffer: Buffer.from(
+          response.data
+        ),
+      });
+
+    await ctx.reply(
+      `✅ Document processed successfully.\n\n` +
+      `📄 ${savedDocument.fileName}\n\n` +
+      `You can now ask me questions about this document.`
+    );
+  } catch (error) {
+    console.error(
+      "Document processing error:",
+      error
+    );
+
+    await ctx.reply(
+      "I couldn't process that PDF. Please make sure it contains readable text and try again."
+    );
+  }
+});
+
 
 bot.on("text", async (ctx) => {
   try {
@@ -341,11 +411,11 @@ const startTelegramBot = async () => {
 
   bot.launch();
 
-  startBriefingScheduler(bot);
-
   console.log(
     "Atlas Telegram bot started"
   );
+
+  return bot;
 };
 
 module.exports = startTelegramBot;
